@@ -2,28 +2,29 @@ using UnityEngine;
 
 public class CameraFollow : MonoBehaviour
 {
-    public Transform target;
+    public Transform alvo;
 
-    [Header("Limits")]
     public float minX = -1f;
     public float maxX = 999f;
     public float minY = -1.5f;
     public float maxY = 0.5f;
 
-    private float fixedZ;
+    private float zFixo;
 
     void Start()
     {
-        fixedZ = transform.position.z;
+        zFixo = transform.position.z;
     }
 
     void LateUpdate()
     {
-        if (target == null) return;
+        if (alvo == null)
+            return;
 
-        float newX = Mathf.Clamp(target.position.x, minX, maxX);
-        float newY = Mathf.Clamp(target.position.y, minY, maxY);
+        float x = Mathf.Clamp(alvo.position.x, minX, maxX);
+        float y = Mathf.Clamp(alvo.position.y, minY, maxY);
 
-        transform.position = new Vector3(newX, newY, fixedZ);
+        transform.position = new Vector3(x, y, zFixo);
     }
+
 }
