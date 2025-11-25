@@ -1,10 +1,16 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager instancia;
-    public int inimigosNoMapa;
-    public int inimigosConvertidos;
+
+    [Header("Estado do Jogo (somente leitura via GameManager)")]
+    [SerializeField] private int vidaMax;
+    [SerializeField] private int vidaAtual;
+    [SerializeField] private int documento;
+    [SerializeField] private int inimigosTotais;
+    [SerializeField] private int inimigosVivos;
 
     void Awake()
     {
@@ -12,7 +18,6 @@ public class GameManager : MonoBehaviour
         {
             instancia = this;
             DontDestroyOnLoad(gameObject);
-            Debug.Log("[GM] GameManager iniciado.");
         }
         else
         {
@@ -20,16 +25,46 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // inicializa/atualiza os dados de player (chamado pelo Player.Awake)
+    public void ConfigurarPlayer(int vidaMax, int vidaAtual, int documento)
+    {
+        this.vidaMax = vidaMax;
+        this.vidaAtual = vidaAtual;
+        this.documento = documento;
+    }
+
+    public void AtualizarVida(int novaVida)
+    {
+        vidaAtual = novaVida;
+    }
+
+    public void AtualizarDocumento(int novoValor)
+    {
+        documento = novoValor;
+    }
+
+    public int GetVidaAtual() => vidaAtual;
+    public int GetVidaMax() => vidaMax;
+    public int GetDocumento() => documento;
+
     public void RegistrarInimigo()
     {
-        inimigosNoMapa++;
-        Debug.Log("[GM] Inimigos no mapa: " + inimigosNoMapa);
+        inimigosTotais++;
+        inimigosVivos++;
     }
 
     public void InimigoConvertido()
     {
-        inimigosConvertidos++;
-        Debug.Log("[GM] Inimigos convertidos: " + inimigosConvertidos);
+        inimigosVivos = Mathf.Max(0, inimigosVivos - 1);
+        // quando zerar inimigos, aqui você pode tratar vitória
+        if (inimigosVivos <= 0)
+        {
+            // exemplo: carregar cena de vitória (ajuste nome)
+            // SceneManager.LoadScene("Vitoria");
+            Debug.Log("[GM] Todos inimigos convertidos - vitória!");
+        }
     }
 
+    public int GetInimigosVivos() => inimigosVivos;
+    public int GetInimigosTotais() => inimigosTotais;
 }

@@ -1,114 +1,196 @@
 using UnityEngine;
+using System.Collections;
 
 public class EnemyAI : MonoBehaviour
 {
-    public enum TipoInimigo { Basico, Caçador }
-    public TipoInimigo tipo = TipoInimigo.Basico;
+    public enum TipoInimigo { Patrulheiro, Algoz }
+    public TipoInimigo tipo = TipoInimigo.Patrulheiro;
 
-    [Header("Movimentação")]
+    [Header("Movimento Geral")]
     public float velocidade = 2f;
-    public float forcaPulo = 8f;
-    public float distanciaSensor = 0.2f;
-
-    [Header("Perseguição (apenas Caçador)")]
-    public float alcanceDeteccao = 6f;
-    private Transform player;
-
-    [Header("Sensores")]
-    public Transform sensorParede;
     public Transform sensorChao;
-    public Transform sensorAlto;
+    public Transform sensorParede;
+    public float distanciaSensor = 0.25f;
+    private int direcao = 1;
 
-    [Header("Conversão")]
-    public int balasNecessarias = 3;
-    private int balasRecebidas = 0;
-    public bool isEvil = true;
+    [Header("Algoz")]
+    public float raioDeteccao = 5f;
+    public float velocidadePerseguicao = 3.5f;
+    public float tempoMaximoPerseguicao = 10f;
+    private float tempoRestante;
+    private bool perseguindo = false;
+    private Transform alvoPlayer;
+
+    [Header("Vida")]
+    public float vidaMax = 20f;
+    private float vidaAtual;
+    public bool ativo = true;
 
     private Rigidbody2D rb;
     private SpriteRenderer sr;
-    private int direcao = 1;
-    private bool grounded;
+    private Animator anim;
+    private int layerGround;
+    private int layerPlayer;
+    private bool morto = false;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         sr = GetComponent<SpriteRenderer>();
+        anim = GetComponent<Animator>();
 
-        player = GameObject.FindGameObjectWithTag("Player").transform;
+        layerGround = LayerMask.GetMask("Ground");
+        layerPlayer = LayerMask.GetMask("Player");
+
+        vidaAtual = vidaMax;
+
+        if (GameManager.instancia != null)
+            GameManager.instancia.RegistrarInimigo();
+        else
+            Debug.LogError("[EnemyAI] GameManager não encontrado.");
+
+        tempoRestante = tempoMaximoPerseguicao;
     }
 
     void Update()
     {
-        if (!isEvil) return;
+        if (!ativo || morto) return;
 
-        AtualizarGrounded();
-
-        bool parede = Physics2D.Raycast(sensorParede.position, Vector2.right * direcao, distanciaSensor, LayerMask.GetMask("Ground"));
-        bool semChao = !Physics2D.Raycast(sensorChao.position, Vector2.down, distanciaSensor, LayerMask.GetMask("Ground"));
-
-        if (tipo == TipoInimigo.Basico)
+        switch (tipo)
         {
-            MovimentarBasico(parede, semChao);
-        }
-        else
-        {
-            MovimentarCacador(parede, semChao);
-        }
+            case TipoInimigo.Patrulheiro:
+                Patrulhar();
+                break;
 
-        sr.flipX = direcao < 0;
+            case TipoInimigo.Algoz:
+                AlgozUpdate();
+                break;
+        }
     }
 
-    void MovimentarBasico(bool parede, bool semChao)
+    void Patrulhar()
     {
-        if (parede || semChao)
-            direcao *= -1;
+        bool semChao = !Physics2D.Raycast(sensorChao.position, Vector2.down, distanciaSensor, layerGround);
+        bool parede = Physics2D.Raycast(sensorParede.position, Vector2.right * direcao, distanciaSensor, layerGround);
 
-        rb.linearVelocity = new Vector2(direcao * velocidade, rb.linearVelocity.y);
-    }
-
-    void MovimentarCacador(bool parede, bool semChao)
-    {
-        float distPlayer = Vector2.Distance(transform.position, player.position);
-
-        if (distPlayer <= alcanceDeteccao)
-        {
-            direcao = player.position.x > transform.position.x ? 1 : -1;
-        }
-        else if (parede || semChao)
-        {
-            direcao *= -1;
-        }
+        if (semChao || parede)
+            Virar();
 
         rb.linearVelocity = new Vector2(direcao * velocidade, rb.linearVelocity.y);
 
-        if (parede)
-            TentarPular();
+        AtualizarAnimacoes(rb.linearVelocity.x);
     }
 
-    void TentarPular()
+    void AlgozUpdate()
     {
-        if (!grounded) return;
-
-        bool espacoLivre = !Physics2D.Raycast(sensorAlto.position, Vector2.right * direcao, distanciaSensor, LayerMask.GetMask("Ground"));
-
-        if (espacoLivre)
+        if (!perseguindo)
         {
-            rb.AddForce(Vector2.up * forcaPulo, ForceMode2D.Impulse);
+            DetectarPlayer();
+            if (!perseguindo)
+            {
+                Patrulhar();
+                return;
+            }
+        }
+
+        Perseguir();
+    }
+
+    void DetectarPlayer()
+    {
+        Collider2D hit = Physics2D.OverlapCircle(transform.position, raioDeteccao, layerPlayer);
+
+        if (hit != null)
+        {
+            alvoPlayer = hit.transform;
+            perseguindo = true;
+            tempoRestante = tempoMaximoPerseguicao;
+
+            anim.SetTrigger("DetectPlayer");
         }
     }
 
-    void AtualizarGrounded()
+    void Perseguir()
     {
-        grounded = Physics2D.Raycast(transform.position, Vector2.down, 0.1f, LayerMask.GetMask("Ground"));
+        if (alvoPlayer == null)
+        {
+            ResetarParaPatrulha();
+            return;
+        }
+
+        tempoRestante -= Time.deltaTime;
+        if (tempoRestante <= 0f)
+        {
+            ResetarParaPatrulha();
+            return;
+        }
+
+        float dirX = Mathf.Sign(alvoPlayer.position.x - transform.position.x);
+        direcao = (int)dirX;
+
+        rb.linearVelocity = new Vector2(dirX * velocidadePerseguicao, rb.linearVelocity.y);
+
+        AtualizarAnimacoes(rb.linearVelocity.x);
     }
 
-    public void LevarTiro()
+    void ResetarParaPatrulha()
     {
-        balasRecebidas++;
-        if (balasRecebidas >= balasNecessarias)
-        {
-            isEvil = false;
-            gameObject.SetActive(false);
-        }
+        perseguindo = false;
+        alvoPlayer = null;
+        anim.SetTrigger("LosePlayer");
     }
+
+    void AtualizarAnimacoes(float velocidadeX)
+    {
+        bool andando = Mathf.Abs(velocidadeX) > 0.1f;
+
+        anim.SetBool("Walk", andando);
+        anim.SetBool("Idle", !andando);
+    }
+
+    public void LevarTiro(float dano)
+    {
+        if (!ativo || morto) return;
+
+        vidaAtual -= dano;
+
+        if (vidaAtual <= 0)
+            StartCoroutine(MorrerEnemy());
+    }
+
+    void Virar()
+    {
+        direcao *= -1;
+        Vector3 esc = transform.localScale;
+        esc.x *= -1;
+        transform.localScale = esc;
+    }
+
+    IEnumerator MorrerEnemy()
+    {
+        ativo = false;
+        morto = true;
+
+        anim.SetTrigger("Die");
+
+        yield return new WaitForSeconds(1f);
+
+        GameManager.instancia.InimigoConvertido();
+        gameObject.SetActive(false);
+    }
+
+    void OnCollisionEnter2D(Collision2D col)
+    {
+        if (!ativo || morto) return;
+
+        if (col.collider.CompareTag("Player"))
+            anim.SetBool("Attack", true);
+    }
+
+    void OnCollisionExit2D(Collision2D col)
+    {
+        if (col.collider.CompareTag("Player"))
+            anim.SetBool("Attack", false);
+    }
+
 }

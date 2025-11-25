@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class ColetavelMunicao : MonoBehaviour
+public class DocumentoCol : MonoBehaviour
 {
     public int quantidade = 1;
 
@@ -9,10 +9,8 @@ public class ColetavelMunicao : MonoBehaviour
         Player p = col.GetComponent<Player>();
         if (p != null)
         {
-            p.AdicionarMunicao(quantidade);
-            Debug.Log("[Coletável] Player coletou munição.");
+            p.AdicionarDocumento(quantidade);
             Destroy(gameObject);
         }
     }
-
 }

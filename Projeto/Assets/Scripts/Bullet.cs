@@ -1,26 +1,29 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
-public class Bala : MonoBehaviour
+
+public class Bullet : MonoBehaviour
 {
     public float vidaDaBala = 5f;
-    public int ricochetesRestantes = 2;
-    public float velocidade = 6f;
 
-    public LayerMask layerInimigo;
-    public LayerMask layerChao;
-
-    private Rigidbody2D rb;
-    private float tempoVivo = 0;
+    private float velocidade;
+    private float dano;
     private Vector2 direcao;
+
+    private float tempoVivo;
 
     void Awake()
     {
-        rb = GetComponent<Rigidbody2D>();
+
     }
 
-    public void ConfigurarDirecao(Vector2 d)
+    public void ConfigurarDirecao(Vector2 d, float dano, float vel, float escala)
     {
         direcao = d.normalized;
+        this.dano = dano;
+        velocidade = vel;
+
+        transform.localScale *= escala;
     }
 
     void Update()
@@ -32,40 +35,21 @@ public class Bala : MonoBehaviour
 
     void FixedUpdate()
     {
-        rb.MovePosition(rb.position + direcao * velocidade * Time.fixedDeltaTime);
+        transform.position += (Vector3)(direcao * velocidade * Time.fixedDeltaTime);
     }
 
-    void OnCollisionEnter2D(Collision2D col)
+    void OnTriggerEnter2D(Collider2D col)
     {
-        int layer = col.collider.gameObject.layer;
-
-        // Colisão com inimigo
-        if (((1 << layer) & layerInimigo) != 0)
+        EnemyAI e = col.GetComponent<EnemyAI>();
+        if (e != null)
         {
-            EnemyAI inimigo = col.collider.GetComponent<EnemyAI>();
-
-            if (inimigo != null)
-                inimigo.LevarTiro();
-
+            e.LevarTiro(dano);
             Destroy(gameObject);
-            return;
         }
 
-        // Colisão com chão
-        if (((1 << layer) & layerChao) != 0)
+        if (col.gameObject.layer == LayerMask.NameToLayer("Ground"))
         {
-            if (ricochetesRestantes > 0)
-            {
-                ricochetesRestantes--;
-
-                Vector2 normal = col.contacts[0].normal;
-                direcao = Vector2.Reflect(direcao, normal).normalized;
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Destroy(gameObject);
         }
     }
-
 }

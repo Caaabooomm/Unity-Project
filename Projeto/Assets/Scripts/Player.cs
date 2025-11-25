@@ -2,140 +2,286 @@ using UnityEngine;
 using System.Collections;
 using UnityEngine.SceneManagement;
 
-
 public class Player : MonoBehaviour
 {
-    [Header("Atributos")]
-    public float velocidade = 3f;
-    public float forcaDePulo = 7.25f;
+    [Header("Movimento")]
+    [SerializeField] private float speed = 3f;
+    [SerializeField] private float jumpForce = 7.25f;
+    [SerializeField] private LayerMask layerGround;
+    [SerializeField] private Transform sensorChao;
+    [SerializeField] private float distanciaSensor = 0.12f;
 
-    public int vidaMax = 3;
-    public int vidaAtual;
+    private bool grounded;
+    private bool groundedLastFrame;
+    private bool canDoubleJump;
 
-    public int municao = 0;
+    [Header("Vida")]
+    [SerializeField] private int vidaMax = 3;
+    private int vidaAtual;
 
     [Header("Invencibilidade")]
-    public float tempoInvencivel = 2f;
-    private bool invencivel = false;
+    [SerializeField] private float tempoInvencivel = 3f; // segundos
+    private bool invencivel;
 
     [Header("Tiro")]
-    public GameObject prefabBala;
-    public float forcaTiro = 400f;
+    [SerializeField] private GameObject prefabBullet;
+    [SerializeField] private float forcaTiroNormal = 10f;
+    [SerializeField] private float forcaTiroCarregado = 5f;
+    [SerializeField] private float tempoNecessarioCarregar = 1f;
+    private int documento;
 
+    [Header("Animações / Componentes")]
+    [SerializeField] private Animator animator;
+
+    [Header("Boost (removido - reserva)")]
+    [SerializeField, HideInInspector] private float speedOriginal;
+
+    // estado privado
     private Rigidbody2D rb;
     private SpriteRenderer sr;
+    private Collider2D colPlayer;
     private Camera cam;
+    private bool morto;
+
+    // carregamento de tiro
+    private bool carregandoTiro;
+    private float tempoCarregando;
+
+    // inspector defaults set above
 
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         sr = GetComponent<SpriteRenderer>();
+        colPlayer = GetComponent<Collider2D>();
         cam = Camera.main;
 
+        if (animator == null)
+            animator = GetComponent<Animator>();
+
+        if (sensorChao == null)
+            sensorChao = transform.Find("GroundCheck");
+
         vidaAtual = vidaMax;
-        Debug.Log("[Player] Iniciado com " + vidaAtual + " vidas.");
+        speedOriginal = speed;
+
+        // inicializar GameManager (se existir) com valores iniciais
+        if (GameManager.instancia != null)
+            GameManager.instancia.ConfigurarPlayer(vidaMax, vidaAtual, documento);
     }
 
     void Update()
     {
+        if (morto) return;
+
+        AtualizarGroundCheck();
         Movimento();
         Pulo();
 
-        if (Input.GetMouseButtonDown(0))
-            Atirar();
+        HandleTiroInput();
+
+        AtualizarAnimacoes();
+
+        groundedLastFrame = grounded;
     }
 
-    void Movimento()
+    private void AtualizarAnimacoes()
+    {
+        if (animator == null) return;
+
+        animator.SetBool("Idle", grounded && Mathf.Abs(rb.linearVelocity.x) < 0.05f);
+        animator.SetBool("Walk", grounded && Mathf.Abs(rb.linearVelocity.x) >= 0.1f);
+        animator.SetBool("Jump", !grounded);
+        animator.SetBool("Invincible", invencivel);
+    }
+
+    private void AtualizarGroundCheck()
+    {
+        grounded = Physics2D.Raycast(sensorChao.position, Vector2.down, distanciaSensor, layerGround);
+
+        if (grounded)
+            canDoubleJump = true;
+    }
+
+    private void Movimento()
     {
         float eixo = Input.GetAxis("Horizontal");
-        rb.linearVelocity = new Vector2(eixo * velocidade, rb.linearVelocityY);
+        rb.linearVelocity = new Vector2(eixo * speed, rb.linearVelocity.y);
 
         if (eixo != 0)
             sr.flipX = eixo < 0;
     }
 
-    void Pulo()
+    private void Pulo()
     {
-        if (Input.GetButtonDown("Jump"))
-        {
-            rb.AddForce(Vector2.up * forcaDePulo, ForceMode2D.Impulse);
-            Debug.Log("[Player] Pulou.");
-        }
-    }
+        if (!Input.GetButtonDown("Jump")) return;
 
-    void Atirar()
-    {
-        if (municao <= 0)
+        if (grounded)
         {
-            Debug.Log("[Player] Tentou atirar sem munição.");
+            rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
             return;
         }
 
-        municao--;
-
-        Vector3 mousePos = cam.ScreenToWorldPoint(Input.mousePosition);
-        Vector2 direcao = mousePos - transform.position;
-        direcao.Normalize();
-
-        GameObject b = Instantiate(prefabBala, transform.position, Quaternion.identity);
-
-        Bala bala = b.GetComponent<Bala>();
-        bala.ConfigurarDirecao(direcao);
-
-        Rigidbody2D rbBala = b.GetComponent<Rigidbody2D>();
-        rbBala.linearVelocity = direcao * forcaTiro;
-
-        Debug.Log("[Player] Disparou. Munição restante: " + municao);
+        if (canDoubleJump && documento > 0)
+        {
+            documento--;
+            AtualizarDocumentoNoGameManager();
+            canDoubleJump = false;
+            if (animator != null) animator.SetTrigger("DoubleJump");
+            rb.linearVelocity = new Vector2(rb.linearVelocity.x, 0);
+            rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
+        }
     }
 
-
-
-    public void AdicionarMunicao(int qtd)
+    private void HandleTiroInput()
     {
-        municao += qtd;
-        Debug.Log("[Player] + " + qtd + " munição. Total: " + municao);
+        // Inicia carregamento
+        if (Input.GetMouseButtonDown(0))
+        {
+            carregandoTiro = true;
+            tempoCarregando = 0f;
+        }
+
+        // Mantendo carregando
+        if (carregandoTiro && Input.GetMouseButton(0))
+        {
+            tempoCarregando += Time.deltaTime;
+        }
+
+        // Soltou o botão
+        if (carregandoTiro && Input.GetMouseButtonUp(0))
+        {
+            carregandoTiro = false;
+
+            if (tempoCarregando >= tempoNecessarioCarregar && documento > 0)
+            {
+                TiroCarregado();
+            }
+            else
+            {
+                AtirarNormal();
+                if (animator != null) animator.SetTrigger("Shoot");
+            }
+        }
+    }
+
+    private void AtirarNormal()
+    {
+        if (documento <= 0) return;
+        documento--;
+        AtualizarDocumentoNoGameManager();
+
+        Vector3 mp = cam.ScreenToWorldPoint(Input.mousePosition);
+        Vector2 dir = (mp - transform.position).normalized;
+
+        GameObject b = Instantiate(prefabBullet, transform.position, Quaternion.identity);
+        // damage 1, velocity forcaTiroNormal, escala 1
+        b.GetComponent<Bullet>().ConfigurarDirecao(dir, 1f, forcaTiroNormal, 1f);
+    }
+
+    private void TiroCarregado()
+    {
+        if (documento <= 0) return;
+        documento--;
+        AtualizarDocumentoNoGameManager();
+
+        Vector3 mp = cam.ScreenToWorldPoint(Input.mousePosition);
+        Vector2 dir = (mp - transform.position).normalized;
+
+        GameObject b = Instantiate(prefabBullet, transform.position, Quaternion.identity);
+        // damage 2, slower velocity, bigger scale
+        b.GetComponent<Bullet>().ConfigurarDirecao(dir, 2f, forcaTiroCarregado, 1.5f);
+        if (animator != null) animator.SetTrigger("Shoot");
+    }
+
+    public void AdicionarDocumento(int qtd)
+    {
+        documento += qtd;
+        AtualizarDocumentoNoGameManager();
+    }
+
+    private void AtualizarDocumentoNoGameManager()
+    {
+        if (GameManager.instancia != null)
+            GameManager.instancia.AtualizarDocumento(documento);
     }
 
     public void TomarDano(int dano)
     {
-        if (invencivel)
-        {
-            Debug.Log("[Player] Tentou tomar dano invencível.");
-            return;
-        }
+        if (morto || invencivel) return;
 
         vidaAtual -= dano;
-        Debug.Log("[Player] Tomou " + dano + " dano. Vidas: " + vidaAtual);
+        if (GameManager.instancia != null)
+            GameManager.instancia.AtualizarVida(vidaAtual);
 
         if (vidaAtual <= 0)
         {
-            Debug.Log("[Player] Morreu. Reiniciando fase.");
-            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            Morrer();
             return;
         }
 
-        StartCoroutine(RoutineInvencivel());
+        StartCoroutine(InvencivelRoutine());
     }
 
-    IEnumerator RoutineInvencivel()
+    private IEnumerator InvencivelRoutine()
     {
         invencivel = true;
-        Debug.Log("[Player] Invencível por " + tempoInvencivel);
+
+        // Ignore colisão com todos os inimigos
+        EnemyAI[] inimigos = Object.FindObjectsByType<EnemyAI>(FindObjectsSortMode.None);
+        foreach (var enemy in inimigos)
+        {
+            Collider2D colEnemy = enemy.GetComponent<Collider2D>();
+            if (colEnemy != null)
+                Physics2D.IgnoreCollision(colPlayer, colEnemy, true);
+        }
 
         yield return new WaitForSeconds(tempoInvencivel);
 
         invencivel = false;
-        Debug.Log("[Player] Invencibilidade terminou.");
+
+        // Reabilita colisões
+        inimigos = Object.FindObjectsByType<EnemyAI>(FindObjectsSortMode.None);
+        foreach (var enemy in inimigos)
+        {
+            Collider2D colEnemy = enemy.GetComponent<Collider2D>();
+            if (colEnemy != null)
+                Physics2D.IgnoreCollision(colPlayer, colEnemy, false);
+        }
+
+        // Se estiver sobre um inimigo, morre
+        Collider2D overlap = Physics2D.OverlapCircle(transform.position, 0.2f);
+        if (overlap != null && overlap.CompareTag("Enemy"))
+        {
+            Morrer();
+        }
     }
 
     private void OnCollisionEnter2D(Collision2D col)
     {
-        EnemyAI e = col.collider.GetComponent<EnemyAI>();
-
-        if (e != null && e.isEvil)
+        if (!invencivel)
         {
-            Debug.Log("[Player] Tocou inimigo mal.");
-            TomarDano(1);
+            EnemyAI e = col.collider.GetComponent<EnemyAI>();
+            if (e != null && e.gameObject.activeSelf)
+                TomarDano(1);
         }
     }
+
+    private void Morrer()
+    {
+        morto = true;
+        if (animator != null) animator.SetTrigger("Die");
+        StartCoroutine(DelayMorte());
+    }
+
+    private IEnumerator DelayMorte()
+    {
+        yield return new WaitForSeconds(1f);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    // getters utilitários (se quiser expor leitura)
+    public int GetVidaAtual() => vidaAtual;
+    public int GetVidaMax() => vidaMax;
+    public int Getdocumento() => documento;
 }
