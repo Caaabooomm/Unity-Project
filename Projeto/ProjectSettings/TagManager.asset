@@ -6,6 +6,7 @@ TagManager:
   tags:
   - Enemy
   - Ground
+  - "Colet\xE1vel"
   layers:
   - Default
   - TransparentFX
