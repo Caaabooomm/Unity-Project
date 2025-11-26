@@ -36,6 +36,8 @@ public class PlayerController : MonoBehaviour
     private bool charging = false;
     private bool atirando = false;
 
+    [SerializeField] private Animator animator;
+
     // NOVO: Flag para evitar dano múltiplo em um único toque
     private bool canTakeDamage = true;
     private float damageCooldown = 1.0f; // Tempo de invencibilidade após o dano
