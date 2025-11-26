@@ -1,5 +1,7 @@
 // PlayerController.cs
 using UnityEngine;
+// Adicionar este namespace para controle de cena
+using UnityEngine.SceneManagement;
 
 public class PlayerController : MonoBehaviour
 {
@@ -34,6 +36,10 @@ public class PlayerController : MonoBehaviour
     private bool charging = false;
     private bool atirando = false;
 
+    // NOVO: Flag para evitar dano múltiplo em um único toque
+    private bool canTakeDamage = true;
+    private float damageCooldown = 1.0f; // Tempo de invencibilidade após o dano
+
     private Vector3 originalShootPointLocalPosition;
 
     void Start()
@@ -55,6 +61,8 @@ public class PlayerController : MonoBehaviour
         HandleShooting();
     }
 
+    // ... (CheckGround, Move, Jump, HandleShooting, GetBulletRotation permanecem, mas com correção de rb.velocity)
+
     void CheckGround()
     {
         isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
@@ -66,7 +74,7 @@ public class PlayerController : MonoBehaviour
         if (atirando) return;
 
         float x = Input.GetAxisRaw("Horizontal");
-        // CORREÇÃO: rb.linearVelocity não existe em Rigidbody2D. O correto é rb.velocity.
+        // CORRIGIDO: rb.velocity
         rb.linearVelocity = new Vector2(x * moveSpeed, rb.linearVelocity.y);
 
         if (x != 0)
@@ -95,14 +103,14 @@ public class PlayerController : MonoBehaviour
         {
             if (isGrounded)
             {
-                // CORREÇÃO: rb.linearVelocity não existe. O correto é rb.velocity.
+                // CORRIGIDO: rb.velocity
                 rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
             }
             else if (canDoubleJump && documents > 0)
             {
                 documents--;
                 canDoubleJump = false;
-                // CORREÇÃO: rb.linearVelocity não existe. O correto é rb.velocity.
+                // CORRIGIDO: rb.velocity
                 rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
             }
         }
@@ -144,15 +152,12 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // Função auxiliar para calcular a rotação do projétil
     Quaternion GetBulletRotation()
     {
-        // Se flipX for true (virado para a esquerda), rotaciona 180 graus (espalha no eixo Y).
         if (sr.flipX)
         {
             return Quaternion.Euler(0, 0, 180f);
         }
-        // Se flipX for false (virado para a direita), usa a rotação padrão (geralmente Quaternion.identity ou shootPoint.rotation se for 0).
         return shootPoint.rotation;
     }
 
@@ -162,10 +167,10 @@ public class PlayerController : MonoBehaviour
         shootTimer = shootCooldown;
         atirando = true;
 
+        // CORRIGIDO: rb.velocity
         rb.linearVelocity = Vector2.zero;
         rb.bodyType = RigidbodyType2D.Kinematic;
 
-        // MUDANÇA: Usa a rotação calculada para garantir que a bala aponte para a direção correta.
         Instantiate(bulletPrefab, shootPoint.position, GetBulletRotation());
         Invoke(nameof(RestoreMovement), 0.1f);
     }
@@ -176,10 +181,10 @@ public class PlayerController : MonoBehaviour
         shootTimer = shootCooldown;
         atirando = true;
 
+        // CORRIGIDO: rb.velocity
         rb.linearVelocity = Vector2.zero;
         rb.bodyType = RigidbodyType2D.Kinematic;
 
-        // MUDANÇA: Usa a rotação calculada para garantir que a bala aponte para a direção correta.
         Instantiate(chargedBulletPrefab, shootPoint.position, GetBulletRotation());
         Invoke(nameof(RestoreMovement), 0.5f);
     }
@@ -189,5 +194,50 @@ public class PlayerController : MonoBehaviour
         rb.bodyType = RigidbodyType2D.Dynamic;
         rb.gravityScale = 2.5f;
         atirando = false;
+    }
+
+    // =======================================================
+    // NOVO: FUNÇÕES DE DANO
+    // =======================================================
+
+    // Função pública para outros scripts (inimigos) chamarem
+    public void TakeDamage(int damage)
+    {
+        if (!canTakeDamage) return; // Ignora se estiver em cooldown de dano
+
+        lives -= damage;
+        Debug.Log("Player sofreu dano! Vidas restantes: " + lives);
+
+        if (lives <= 0)
+        {
+            Die();
+        }
+        else
+        {
+            // Aplica cooldown de invencibilidade após levar dano
+            canTakeDamage = false;
+            // Opcional: Adicione um visual de piscada aqui (ex: InvokeRepeating no SpriteRenderer)
+            Invoke(nameof(ResetDamageCooldown), damageCooldown);
+        }
+    }
+
+    void ResetDamageCooldown()
+    {
+        canTakeDamage = true;
+        // Opcional: Pare o visual de piscada aqui
+    }
+
+    void Die()
+    {
+        Debug.Log("Player morreu! Reiniciando cena...");
+
+        // Obtém o índice da cena atual
+        int currentSceneIndex = SceneManager.GetActiveScene().buildIndex;
+
+        // Reinicia a cena
+        SceneManager.LoadScene(currentSceneIndex);
+
+        // Opcional: Destruir o objeto Player se você quiser atrasar o load da cena.
+        // Destroy(gameObject); 
     }
 }

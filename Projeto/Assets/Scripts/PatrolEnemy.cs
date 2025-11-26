@@ -25,14 +25,25 @@ public class PatrolEnemy : EnemyBase
         }
     }
 
-    // NOVO: Lógica de Colisão para Inverter
+
+    // Lógica de Colisão para Inverter e Causar Dano
     private void OnCollisionEnter2D(Collision2D collision)
     {
-        // Inverte a direção se colidir com algo que não seja um trigger e não seja o jogador.
-        // Assumindo que inimigos e paredes têm o mesmo comportamento de colisão.
-        if (!collision.gameObject.CompareTag("Player") && !collision.gameObject.GetComponent<Collider2D>().isTrigger)
+        // 1. LÓGICA DE DANO
+        if (collision.gameObject.CompareTag("Player"))
         {
-            // Inverte a direção
+            PlayerController playerScript = collision.gameObject.GetComponent<PlayerController>();
+
+            if (playerScript != null)
+            {
+                playerScript.TakeDamage(1); // Causa 1 de dano
+            }
+        }
+
+        // 2. LÓGICA DE INVERSÃO
+        // Inverte a direção se colidir com algo que não seja um trigger
+        if (!collision.gameObject.GetComponent<Collider2D>().isTrigger)
+        {
             Flip();
         }
     }

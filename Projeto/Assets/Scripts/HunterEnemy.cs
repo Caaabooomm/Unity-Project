@@ -9,7 +9,6 @@ public class HunterEnemy : EnemyBase
 
     // NOVO: Checagem de Borda
     public Transform edgeCheck;
-    public LayerMask groundLayer;
     public float edgeCheckDistance = 0.5f; // Distância à frente para checar
 
     private Transform player;
@@ -117,24 +116,30 @@ public class HunterEnemy : EnemyBase
         return wallCheck.collider != null || noEdge;
     }
 
-    // NOVO: Lógica de Colisão para Inverter (Parede ou outro Inimigo)
+    // Se o hunter colidir com o player, causa dano e interrompe a perseguição
     private void OnCollisionEnter2D(Collision2D collision)
     {
-        // Inverte a direção SÓ SE estiver patrulhando e colidir com uma parede/objeto
+        // 1. LÓGICA DE DANO
+        if (collision.gameObject.CompareTag("Player"))
+        {
+            PlayerController playerScript = collision.gameObject.GetComponent<PlayerController>();
+
+            if (playerScript != null)
+            {
+                playerScript.TakeDamage(1); // Causa 1 de dano
+            }
+
+            // Interrompe a perseguição após contato
+            chasing = false;
+        }
+
+        // 2. LÓGICA DE INVERSÃO DE PATRULHA
         if (patrolling)
         {
             if (!collision.gameObject.CompareTag("Player") && !collision.gameObject.GetComponent<Collider2D>().isTrigger)
             {
                 Flip();
             }
-        }
-
-        // Dano ao Player
-        if (collision.gameObject.CompareTag("Player"))
-        {
-            // O Player não tem mais o sistema de vidas, apenas encerramos a perseguição.
-            chasing = false;
-            // Se o inimigo não deve ser interrompido, remova a linha acima.
         }
     }
 }
