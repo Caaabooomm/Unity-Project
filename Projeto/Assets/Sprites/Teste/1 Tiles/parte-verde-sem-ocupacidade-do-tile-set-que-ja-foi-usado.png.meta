@@ -160,7 +160,8 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      parte-verde-sem-ocupacidade-do-tile-set-que-ja-foi-usado_0: -6467105550136216448
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
